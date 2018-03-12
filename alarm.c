@@ -45,7 +45,7 @@
 #include "queue.h"
 #include "event_groups.h"
 
-#define DEBUG			(1)
+#define DEBUG			(0)
 #define LIMIT_TIME		(60)
 #define LIMIT_HOUR		(24)
 #define TICKS_SECONDS	(1000)
@@ -76,7 +76,7 @@ typedef struct
 	uint8_t hours;
 } alarm_t;
 
-alarm_t alarm = {15, 59, 0};
+alarm_t alarm = {2, 1, 0};
 
 void seconds_task(void *arg)
 {
@@ -84,7 +84,7 @@ void seconds_task(void *arg)
 	const TickType_t xPeriod = pdMS_TO_TICKS(TICKS_SECONDS);
 	xLastWakeTime = xTaskGetTickCount();
 
-	uint8_t seconds = 55;
+	uint8_t seconds = 40;
 	time_msg_t *time_queue;
 
 	for(;;)
@@ -112,7 +112,7 @@ void seconds_task(void *arg)
 
 void minutes_task(void *arg)
 {
-	uint8_t minutes = 58;
+	uint8_t minutes = 59;
 	time_msg_t *time_queue;
 
 	for(;;)
@@ -124,7 +124,6 @@ void minutes_task(void *arg)
 
 		xSemaphoreTake(minutes_semaphore,portMAX_DELAY);
 		minutes++;
-		//xSemaphoreGive(minutes_semaphore);
 		if(LIMIT_TIME == minutes)
 		{
 			minutes = 0;
@@ -140,7 +139,7 @@ void minutes_task(void *arg)
 
 void hours_task(void *arg)
 {
-	uint8_t hours = 2;
+	uint8_t hours = 0;
 	time_msg_t *time_queue;
 
 	for(;;)
@@ -156,7 +155,6 @@ void hours_task(void *arg)
 		{
 			hours = 0;
 		}
-		xSemaphoreGive(hours_semaphore);
 
 		time_queue = pvPortMalloc(sizeof(time_msg_t));
 		time_queue->time_type = hours_type;
@@ -169,7 +167,7 @@ void alarm_task(void *arg)
 {
 	for(;;)
 	{
-		xEventGroupWaitBits(g_time_events, (EVENT_SECONDS|EVENT_MINUTES),
+		xEventGroupWaitBits(g_time_events, (EVENT_SECONDS|EVENT_MINUTES|EVENT_HOURS),
 				pdTRUE, pdTRUE, portMAX_DELAY);
 
 		xSemaphoreTake(g_mutex2, portMAX_DELAY);
@@ -181,9 +179,9 @@ void alarm_task(void *arg)
 void print_task(void *arg)
 {
 	time_msg_t *time_queue;
-	uint8_t hours;
-	uint8_t minutes;
-	uint8_t seconds;
+	uint8_t hours = 0;
+	uint8_t minutes = 0;
+	uint8_t seconds = 0;
 
 	for(;;)
 	{
@@ -206,8 +204,6 @@ void print_task(void *arg)
 			}
 		}
 		while(0 != uxQueueMessagesWaiting(xQueue));
-
-		//uxQueueMessagesWaiting(xQueue);
 		vPortFree(time_queue);
 
 		xSemaphoreTake(g_mutex1, portMAX_DELAY);
