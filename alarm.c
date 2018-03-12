@@ -45,7 +45,6 @@
 #include "queue.h"
 #include "event_groups.h"
 
-#define DEBUG			(0)
 #define LIMIT_TIME		(60)
 #define LIMIT_HOUR		(24)
 #define TICKS_SECONDS	(1000)
@@ -53,6 +52,9 @@
 #define EVENT_MINUTES (1<<1)
 #define EVENT_HOURS	  (1<<2)
 #define QUEUE_ELEMENTS	(3)
+#define DEFAULT_MINUTES	(59)
+#define DEFAULT_HOURS	(5)
+#define DEFAULT_SECONDS	(55)
 
 SemaphoreHandle_t minutes_semaphore;
 SemaphoreHandle_t hours_semaphore;
@@ -76,7 +78,7 @@ typedef struct
 	uint8_t hours;
 } alarm_t;
 
-alarm_t alarm = {2, 1, 0};
+alarm_t alarm = {10, 0, 6};
 
 void seconds_task(void *arg)
 {
@@ -84,7 +86,7 @@ void seconds_task(void *arg)
 	const TickType_t xPeriod = pdMS_TO_TICKS(TICKS_SECONDS);
 	xLastWakeTime = xTaskGetTickCount();
 
-	uint8_t seconds = 40;
+	uint8_t seconds = DEFAULT_SECONDS;
 	time_msg_t *time_queue;
 
 	for(;;)
@@ -112,7 +114,7 @@ void seconds_task(void *arg)
 
 void minutes_task(void *arg)
 {
-	uint8_t minutes = 59;
+	uint8_t minutes = DEFAULT_MINUTES;
 	time_msg_t *time_queue;
 
 	for(;;)
@@ -139,7 +141,7 @@ void minutes_task(void *arg)
 
 void hours_task(void *arg)
 {
-	uint8_t hours = 0;
+	uint8_t hours = DEFAULT_HOURS;
 	time_msg_t *time_queue;
 
 	for(;;)
@@ -179,8 +181,8 @@ void alarm_task(void *arg)
 void print_task(void *arg)
 {
 	time_msg_t *time_queue;
-	uint8_t hours = 0;
-	uint8_t minutes = 0;
+	uint8_t hours = DEFAULT_HOURS;
+	uint8_t minutes = DEFAULT_MINUTES;
 	uint8_t seconds = 0;
 
 	for(;;)
@@ -195,6 +197,10 @@ void print_task(void *arg)
 				break;
 			case (minutes_type):
 					minutes = time_queue->value;
+					if(0 == minutes)
+					{
+						hours++;
+					}
 				break;
 			case (hours_type):
 					hours = time_queue->value;
