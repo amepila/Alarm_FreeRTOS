@@ -42,18 +42,21 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "semphr.h"
+#include "queue.h"
 #include "event_groups.h"
 
 #define LIMIT_TIME		(60)
 #define LIMIT_HOUR		(24)
 #define TICKS_SECONDS	(1000)
-#define EVENT_60_SECONDS (1<<0)
-#define EVENT_60_MINUTES (1<<1)
+#define EVENT_SECONDS (1<<0)
+#define EVENT_MINUTES (1<<1)
+#define EVENT_HOURS	  (1<<2)
+#define QUEUE_ELEMENTS	(3)
 
 SemaphoreHandle_t minutes_semaphore;
-SemaphoreHandle_t hour_semaphore;
-SemaphoreHandle_t task_semaphore;
+SemaphoreHandle_t hours_semaphore;
 EventGroupHandle_t g_time_events;
+QueueHandle_t xQueue;
 
 typedef enum{seconds_type, minutes_type, hours_type} time_types_t;
 
@@ -80,9 +83,9 @@ void seconds_task(void *arg)
 
 	uint8_t seconds = 0;
 	time_msg_t *time_queue;
-	time_queue->time_type = seconds_type;
 
 	time_queue = pvPortMalloc(sizeof(time_msg_t));
+	time_queue->time_type = seconds_type;
 
 	for(;;)
 	{
@@ -96,8 +99,7 @@ void seconds_task(void *arg)
 		}
 		if(seconds == alarm.seconds)
 		{
-			xEventGroupSetBits(g_time_events, EVENT_60_SECONDS);
-
+			xEventGroupSetBits(g_time_events, EVENT_SECONDS);
 		}
 		xQueueSend(xQueue, &time_queue, portMAX_DELAY);
 	}
@@ -105,50 +107,87 @@ void seconds_task(void *arg)
 
 void minutes_task(void *arg)
 {
-	uint8_t minutes;
+	uint8_t minutes = 0;
+	time_msg_t *time_queue;
+
+	time_queue = pvPortMalloc(sizeof(time_msg_t));
+	time_queue->time_type = minutes_type;
 
 	for(;;)
 	{
-		//xSemaphoreTake(minutes_semaphore,portMAX_DELAY);
-		xEventGroupWaitBits(g_time_events, EVENT_60_SECONDS, pdTRUE, pdTRUE, portMAX_DELAY);
+		xSemaphoreTake(minutes_semaphore,portMAX_DELAY);
 		minutes++;
-
+		time_queue->value = minutes;
 		if(LIMIT_TIME == minutes)
 		{
 			minutes = 0;
-			xEventGroupSetBits(g_time_events, EVENT_60_MINUTES);
+			xSemaphoreGive(hours_semaphore);
 		}
+		xSemaphoreGive(minutes_semaphore);
+
+		if(minutes == alarm.minutes)
+		{
+			xEventGroupSetBits(g_time_events, EVENT_MINUTES);
+		}
+		xQueueSend(xQueue, &time_queue, portMAX_DELAY);
 	}
 }
 
 void hours_task(void *arg)
 {
-	uint8_t hours;
+	uint8_t hours = 0;
+	time_msg_t *time_queue;
+
+	time_queue = pvPortMalloc(sizeof(time_msg_t));
+	time_queue->time_type = hours_type;
+
 	for(;;)
 	{
+		xSemaphoreTake(hours_semaphore,portMAX_DELAY);
 		hours++;
-		xEventGroupWaitBits(g_time_events, EVENT_60_MINUTES, pdTRUE, pdTRUE, portMAX_DELAY);
 
 		if(LIMIT_HOUR == hours)
 		{
 			hours = 0;
 		}
+		xSemaphoreGive(hours_semaphore);
 
+		if(hours == alarm.hours)
+		{
+			xEventGroupSetBits(g_time_events, EVENT_HOURS);
+		}
+		xQueueSend(xQueue, &time_queue, portMAX_DELAY);
 	}
 
 }
 
 void alarm_task(void *arg)
 {
+	for(;;)
+	{
+		xEventGroupWaitBits(g_time_events, (EVENT_SECONDS|EVENT_MINUTES|EVENT_HOURS),
+				pdTRUE, pdTRUE, portMAX_DELAY);
 
+		PRINTF("ALARM\n");
+	}
 }
 
 void print_task(void *arg)
 {
-	vTaskDelay(100);
+	time_msg_t *time_queue;
+
+	PRINTF("%d:", alarm.hours);
+	PRINTF("%d:", alarm.minutes);
+	PRINTF("%d", alarm.seconds);
+
+	for(;;)
+	{
+		xQueueReceive(xQueue, &time_queue, portMAX_DELAY);
+
+
+		vPortFree(time_queue);
+	}
 }
-
-
 
 int main(void) {
 
@@ -160,8 +199,10 @@ int main(void) {
     BOARD_InitDebugConsole();
 
     minutes_semaphore = xSemaphoreCreateBinary();
+    hours_semaphore = xSemaphoreCreateBinary();
     g_time_events = xEventGroupCreate();
 
+    xQueueCreate(QUEUE_ELEMENTS, sizeof(time_msg_t));
     xTaskCreate(seconds_task, "Seconds", configMINIMAL_STACK_SIZE, NULL, configMAX_PRIORITIES-2, NULL);
     xTaskCreate(minutes_task, "Minutes", configMINIMAL_STACK_SIZE, NULL, configMAX_PRIORITIES-1, NULL);
     xTaskCreate(hours_task, "Hours", configMINIMAL_STACK_SIZE, NULL, configMAX_PRIORITIES-1, NULL);
